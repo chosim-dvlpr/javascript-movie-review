@@ -35,6 +35,11 @@ const httpRequest = {
     page: number,
     input: string,
   ): Promise<{ movieList: MovieListType; isLastPage: boolean }> {
+    const response = await tryCatchApi(
+      `https://api.themoviedb.org/3/search/movie?query=${input}&include_adult=false&language=ko-KR&page=${page}&api_key=${process.env.API_KEY}`,
+    );
+
+    if (response.status !== 200) throw new HTTPError(response.status, '다시 시도해 주세요.');
 
     const responseData = await response.json();
     const movieList = responseData.results;
