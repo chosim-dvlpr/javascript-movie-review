@@ -26,22 +26,15 @@ const httpRequest = {
     const responseData = await response.json();
     const movieList = responseData.results;
 
-    const totalPages = responseData.total_pages;
-
-    const currentPages = responseData.page;
+    const { total_pages: totalPages, page: currentPages } = responseData;
     const isLastPage = totalPages === currentPages;
     return { movieList, isLastPage };
   },
 
   async fetchSearchedMovies(
     page: number,
-    input?: string,
+    input: string,
   ): Promise<{ movieList: MovieListType; isLastPage: boolean }> {
-    const response = await tryCatchApi(
-      `https://api.themoviedb.org/3/search/movie?query=${input}&include_adult=false&language=ko-KR&page=${page}&api_key=${process.env.API_KEY}`,
-    );
-
-    if (response.status !== 200) throw new HTTPError(response.status, '다시 시도해 주세요.');
 
     const responseData = await response.json();
     const movieList = responseData.results;
@@ -49,11 +42,20 @@ const httpRequest = {
       throw new HTTPError(response.status, '검색된 영화가 없습니다.');
     }
 
-    const totalPages = responseData.total_pages;
-
-    const currentPages = responseData.page;
+    const { total_pages: totalPages, page: currentPages } = responseData;
     const isLastPage = totalPages === currentPages;
     return { movieList, isLastPage };
+  },
+
+  async fetchMovieDetail(movieId: number) {
+    const response = await tryCatchApi(
+      `https://api.themoviedb.org/3/movie/${movieId}?language=ko-KR&api_key=${process.env.API_KEY}`,
+    );
+
+    if (response.status !== 200) throw new HTTPError(response.status, '다시 시도해 주세요.');
+
+    const movieDetail = await response.json();
+    return movieDetail;
   },
 };
 
