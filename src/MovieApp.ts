@@ -1,12 +1,12 @@
 import {
-  MOVIE_PATH,
+  MOVIE_POSTER_PATH,
   POPULAR_MOVIE_TITLE,
   RENDER_TYPE,
   SEARCH_MOVIE_TITLE,
 } from './constants/movie';
 import { NO_IMAGE } from './images/index';
 import { MovieListType } from './types/movie';
-import { RenderInputType } from './types/props';
+import { RenderInputType, RenderType } from './types/props';
 import {
   HEADER_TEMPLATE,
   MOVIE_ITEM_TEMPLATE,
@@ -16,34 +16,19 @@ import movieDetailModal from './components/movieDetailModal/movieDetailModal';
 import MoviePage from './domain/MoviePage';
 import infiniteScroll from './utils/infiniteScroll';
 import movieData from './domain/movieData';
+import INFINITE_SCROLL from './constants/infiniteScroll';
 
-// ====================임시 더미데이터==================
-const dummy = [
-  {
-    id: 1011985,
-    ratingValue: 10,
-  },
-  {
-    id: 634492,
-    ratingValue: 2,
-  },
-  {
-    id: 763215,
-    ratingValue: 8,
-  },
-];
+interface CategorizeRenderType {
+  popular: MoviePage;
+  search: MoviePage;
+}
 
-localStorage.setItem('ratings', JSON.stringify(dummy));
+class MovieApp {
+  popularPage: MoviePage = new MoviePage();
 
-// ========================임시=========================
-
-class MovieApp extends MoviePage {
-  isLastPage: boolean = false;
-
-  isLoading: boolean = false;
+  searchPage: MoviePage = new MoviePage();
 
   constructor() {
-    super();
     this.init();
   }
 
@@ -59,11 +44,14 @@ class MovieApp extends MoviePage {
 
     this.createMain(POPULAR_MOVIE_TITLE);
     this.setSearchFormEvent();
-    this.handleSearchWidth();
+    this.preventSearchEvent();
 
     await this.renderMainContents({ renderType: RENDER_TYPE.POPULAR });
 
-    infiniteScroll.startObserving(this, { renderType: RENDER_TYPE.POPULAR });
+    infiniteScroll.startObserving(this, {
+      renderType: RENDER_TYPE.POPULAR,
+      threshold: INFINITE_SCROLL.THRESHOLD,
+    });
   }
 
   updateMainHtml(titleMessage: string) {
@@ -96,56 +84,61 @@ class MovieApp extends MoviePage {
     const section = document.createElement('section');
     section.classList.add('item-view');
     section.id = 'section--item-view';
-    section.innerHTML = /* html */ `<h2>${titleMessage}</h2>`;
+
+    const ul = this.createItemList();
+    const h2 = document.createElement('h2');
+    h2.textContent = titleMessage;
+
+    section.appendChild(h2);
+    section.appendChild(ul);
     return section;
   }
 
-  createMainSkeleton() {
+  createItemList() {
     const ul = document.createElement('ul');
     ul.classList.add('item-list');
-    ul.id = 'skeleton';
-
-    ul.innerHTML = SKELETON_ITEM_TEMPLATE.repeat(20);
-    const itemView = document.querySelector('#section--item-view');
-    if (itemView) itemView.appendChild(ul);
-
-    this.isLoading = true;
+    ul.id = 'item-list';
+    movieDetailModal.handleDetailModal(ul);
+    return ul;
   }
 
-  createShowMoreButton({ renderType, input }: RenderInputType) {
-    const button = document.createElement('button');
-    button.classList.add('btn', 'primary', 'full-width');
-    button.id = 'show-more-btn';
-    button.textContent = '더 보기';
+  createMainSkeleton(renderType: RenderType) {
+    const ul = document.querySelector('#item-list') as HTMLElement;
+    if (!ul) return;
 
-    button.addEventListener('click', () => {
-      this.updatePage(renderType);
-      this.renderMainContents({ renderType, input });
-    });
-    return button;
+    const templates = document
+      .createRange()
+      .createContextualFragment(SKELETON_ITEM_TEMPLATE.repeat(20));
+    ul.appendChild(templates);
+
+    this.categorizeRenderType(renderType).isLoading = true;
   }
 
   createMainContents(movieList: MovieListType) {
-    const movieData = this.showMovieData(movieList);
-    const itemView = document.querySelector('#section--item-view');
-    if (!itemView) return;
+    const ul = document.querySelector('#item-list') as HTMLElement;
+    if (!ul) return;
 
-    itemView.appendChild(movieData);
+    const templates = movieList.map((movie) => {
+      const imagePath = movie.poster_path ? `${MOVIE_POSTER_PATH}/${movie.poster_path}` : NO_IMAGE;
+      return MOVIE_ITEM_TEMPLATE(movie, imagePath);
+    });
+
+    ul.insertAdjacentHTML('beforeend', templates.join(''));
   }
 
   createScrollEnd() {
     const div = document.createElement('div');
     div.id = 'scroll-end-box';
+    div.className = 'scroll-end-box';
     return div;
   }
 
   async renderMainContents({ renderType, input }: RenderInputType) {
-    this.createMainSkeleton();
     const { movieList, isLastPage: isLastPageValue } = await movieData.handleMovieData(this, {
       renderType,
       input,
     });
-    this.isLastPage = isLastPageValue;
+    this.categorizeRenderType(renderType).isLastPage = isLastPageValue;
     this.createMainContents(movieList);
   }
 
@@ -159,25 +152,12 @@ class MovieApp extends MoviePage {
     if (scrollEnd) scrollEnd.remove();
   }
 
-  deleteSkeleton() {
-    const skeleton = document.querySelector('#skeleton');
-    if (skeleton) skeleton.remove();
-    this.isLoading = false;
-  }
-
-  showMovieData(movieList: MovieListType) {
-    this.deleteSkeleton();
-    const ul = document.createElement('ul');
-    ul.classList.add('item-list');
-
-    const templates = movieList.map((movie) => {
-      const imagePath = movie.poster_path ? `${MOVIE_PATH}/${movie.poster_path}` : NO_IMAGE;
-      return MOVIE_ITEM_TEMPLATE(movie, imagePath);
-    });
-
-    ul.innerHTML = templates.join('');
-    movieDetailModal.handleDetailModal(ul);
-    return ul;
+  deleteSkeleton(renderType: RenderType) {
+    const skeletons = document.querySelectorAll('.li--skeleton');
+    if (skeletons) {
+      skeletons.forEach((skeleton) => skeleton.remove());
+    }
+    this.categorizeRenderType(renderType).isLoading = false;
   }
 
   setSearchFormEvent() {
@@ -188,6 +168,7 @@ class MovieApp extends MoviePage {
         event.preventDefault();
         this.handleSearchFormSubmit();
         this.toggleSearchWidth(searchForm);
+        this.searchPage.resetIsLastPage();
       });
     }
   }
@@ -197,28 +178,39 @@ class MovieApp extends MoviePage {
 
     if (searchInput instanceof HTMLInputElement) {
       const input = searchInput.value;
-      this.resetPage();
-      this.handleSearchWidth();
+      const page = this.categorizeRenderType('search');
+      page.resetPage();
+
+      searchInput.focus();
+      this.preventSearchEvent();
+
       this.updateMainHtml(SEARCH_MOVIE_TITLE(input));
       await this.renderMainContents({ renderType: RENDER_TYPE.SEARCH, input });
-      infiniteScroll.startObserving(this, { renderType: RENDER_TYPE.SEARCH, input });
+      infiniteScroll.startObserving(this, {
+        renderType: RENDER_TYPE.SEARCH,
+        input,
+        threshold: INFINITE_SCROLL.THRESHOLD,
+      });
     }
   }
 
-  handleSearchWidth() {
+  preventSearchEvent() {
     const searchForm = document.querySelector('#search-form') as HTMLFormElement;
+    if (!searchForm) return;
+    searchForm.reset();
 
-    if (searchForm && window.innerWidth <= 834) {
-      searchForm.addEventListener(
-        'click',
-        (event: Event) => {
-          event.preventDefault();
-          searchForm.reset();
-          this.toggleSearchWidth(searchForm);
-        },
-        { once: true },
-      );
-    }
+    searchForm.addEventListener(
+      'click',
+      (event: Event) => {
+        event.preventDefault();
+      },
+      { once: true },
+    );
+  }
+
+  handleMovieApp({ renderType, input }: RenderInputType) {
+    this.categorizeRenderType(renderType).updatePage();
+    this.renderMainContents({ renderType, input });
   }
 
   toggleSearchWidth(searchForm: HTMLFormElement) {
@@ -229,6 +221,14 @@ class MovieApp extends MoviePage {
     searchInput.classList.toggle('search-input--longer');
     logo.classList.toggle('invisible');
     searchInput.focus();
+  }
+
+  categorizeRenderType(renderType: RenderType): MoviePage {
+    const categorizeRenderTypeTable: CategorizeRenderType = {
+      popular: this.popularPage,
+      search: this.searchPage,
+    };
+    return categorizeRenderTypeTable[renderType];
   }
 }
 

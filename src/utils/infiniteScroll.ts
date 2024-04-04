@@ -1,31 +1,31 @@
 import MovieApp from '../MovieApp';
 import { RenderInputType } from '../types/props';
 
+interface ObservingType extends RenderInputType {
+  threshold: number;
+}
+
 const infiniteScroll = {
-  startObserving(movieApp: MovieApp, { renderType, input }: RenderInputType) {
+  startObserving(movieApp: MovieApp, { renderType, input, threshold }: ObservingType) {
+    if (movieApp.categorizeRenderType(renderType).isLastPage) return;
     const scrollEnd = document.querySelector('#scroll-end-box');
     if (scrollEnd) {
       const options = {
-        threshold: 1.0,
+        root: document,
+        threshold,
       };
 
-      const observer = new IntersectionObserver((entries, observer) => {
+      const observers = new IntersectionObserver((entries, observer) => {
         entries.forEach((entry) => {
-          if (movieApp.isLastPage) observer.disconnect();
-          if (!entry.isIntersecting || movieApp.isLoading) return;
-
+          if (movieApp.categorizeRenderType(renderType).isLastPage) observer.disconnect();
+          if (!entry.isIntersecting || movieApp.categorizeRenderType(renderType).isLoading) return;
           observer.observe(scrollEnd);
-          this.handleMovieApp(movieApp, { renderType, input });
+          movieApp.handleMovieApp({ renderType, input });
         });
       }, options);
 
-      observer.observe(scrollEnd);
+      observers.observe(scrollEnd);
     }
-  },
-
-  handleMovieApp(movieApp: MovieApp, { renderType, input }: RenderInputType) {
-    movieApp.updatePage(renderType);
-    movieApp.renderMainContents({ renderType, input });
   },
 };
 
